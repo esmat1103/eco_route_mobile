@@ -88,7 +88,7 @@ class _ProfileState extends State<Profile> {
             ),
             body: Column(
               children: <Widget>[
-                const SizedBox(height: 20),
+                const SizedBox(height: 10),
                 Center(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.center,

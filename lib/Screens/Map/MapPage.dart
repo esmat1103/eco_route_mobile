@@ -615,17 +615,17 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
   }
   Future<RouteData> _drawRoute(List<osm.GeoPoint> routePoints) async {
     try {
-      if (_routeCreated) {
+      if (_routeCreated && _routeId.isNotEmpty) {
         print("Route already created. Skipping route creation.");
-        // You may return existing route data here if needed
+        // Return existing route data with the stored route ID
         return RouteData(
           allPoints: _allpoints,
           routePoints: _generatedRoutePoints,
           totalDistance: _distance,
           totalDuration: _duration,
           routeId: _routeId,
-
         );
+
       }
 
       final User? user = _auth.currentUser;
@@ -660,7 +660,7 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
           roadOption: osm.RoadOption(
             roadWidth: 20, // Set the width of the polyline
             roadColor: Colors.blue[400]!,
-            zoomInto: false, // No need to zoom into the route for intermediate segments
+            zoomInto: true, // No need to zoom into the route for intermediate segments
           )));
 
       // Draw the route between bins
@@ -673,7 +673,7 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
             roadOption: osm.RoadOption(
               roadWidth: 20, // Set the width of the polyline
               roadColor: Colors.blue[400]!,
-              zoomInto: false, // No need to zoom into the route for intermediate segments
+              zoomInto: true, // No need to zoom into the route for intermediate segments
             )));
       }
 
@@ -685,7 +685,7 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
           roadOption: osm.RoadOption(
             roadWidth: 20, // Set the width of the polyline
             roadColor: Colors.blue[400]!,
-            zoomInto: true, // Zoom into the route for the last segment
+            zoomInto: true,
           )));
       // Calculate total duration and distance
       double totalDuration = 0;
@@ -716,7 +716,6 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
         _instructions = roads.map((road) => road.instructions).join('\n');
       });
 
-// Optionally, you can print some information about the route
       print("Route information:");
       print("Distance: $_distance");
       print("Duration: $_duration");
@@ -733,25 +732,29 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
       _allpoints=allPoints;
       _generatedRoutePoints=routePoints;
       // Call createRoute method after drawing the route successfully
-      String? createdRouteId =
-      await createRoute(fuelConsumption, routePoints.length,allPoints);
+      String? createdRouteId = await createRoute(
+        fuelConsumption,
+        routePoints.length,
+        allPoints,
+      );
 
-// Set routeCreated to true to prevent further route creation
-      _routeCreated = true;
+      // Store the route ID if it's created successfully
+      if (createdRouteId != null && createdRouteId.isNotEmpty) {
+        _routeId = createdRouteId;
+        _routeCreated = true;
+      }
 
-
-
-      // Return both lists in a RouteData object
+      // Return the route data
       return RouteData(
         allPoints: allPoints,
         routePoints: routePoints,
         totalDistance: roundedDistance,
-        routeId: createdRouteId,
+        routeId: _routeId,
         totalDuration: durationInMinutes.toDouble(),
       );
     } catch (error) {
       print("Error while drawing route: $error");
-      return RouteData(allPoints: [], routePoints: [],totalDistance:0.0,totalDuration:0.0,routeId:'');
+      return RouteData(allPoints: [], routePoints: [], totalDistance: 0.0, totalDuration: 0.0, routeId: '');
     }
   }
   double _calculateFuelConsumption(double distance) {
@@ -816,7 +819,7 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
   }
 
 
-  Future<List<osm.GeoPoint>> drawTestRoute(osm.MapController _mapController,List<osm.GeoPoint> allPoints) async {
+  Future<List<osm.GeoPoint>> drawTestRoute(osm.MapController _mapController,List<osm.GeoPoint> allPoints,String routeId) async {
     // Define the route points
     final List<osm.GeoPoint> routePoints = [
       osm.GeoPoint(latitude: 36.1796, longitude: 8.7074), // New starting point
@@ -863,8 +866,8 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
     for (var road in roads) {
       allTestPoints.addAll(road.route);
     }
-    await createTestRoute(allTestPoints);
-    String? createdTestRouteId = await createTestRoute(allTestPoints);
+    await createTestRoute(allTestPoints,routeId);
+    String? createdTestRouteId = await createTestRoute(allTestPoints,routeId);
     // Return the list of all the points of the drawn route
     print('alltestpoints:$allTestPoints');
 
@@ -872,7 +875,7 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
     startTestRouteSimulation(allTestPoints, allPoints,createdTestRouteId ); // Pass allPoints
     return allTestPoints;
   }
-  Future<String?> createTestRoute(List<osm.GeoPoint> allTestPoints) async {
+  Future<String?> createTestRoute(List<osm.GeoPoint> allTestPoints, routeId) async {
     try {
       // Create a route document in Firestore
       final firestore.CollectionReference routesCollection =
@@ -887,6 +890,7 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
       final dayId = DateFormat('yyyyMMdd').format(currentTime);
 
       await newRouteRef.set({
+        'correctRouteId': routeId,
         'routeId': newRouteRef.id,
         'date': currentTime,
         'allTestPoints': allTestPoints.map((point) =>
@@ -1002,8 +1006,6 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
       },
     );
   }
-
-
   void _showRouteCompletionDialog() {
     showDialog(
       context: context,
@@ -1070,7 +1072,6 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
       print('Route points are empty. Cannot start simulation.');
       return;
     }
-
     print('binPoints number: ${routePoints.length}');
     print('binPoints: $routePoints'); // Log all route points
     print('Starting route simulation...');
@@ -1182,7 +1183,7 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
     print('Simulation completed.');
     _showRouteCompletionDialog();
     await _mapController.removeLastRoad();
-    await createNotification('correct_route', '$routeId');
+    await createNotification('correct_route', routeId!);
   }
   List<String> _formatCoordinates(List<osm.GeoPoint> points) {
     return points.map((point) {
@@ -1537,7 +1538,7 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
             onPressed: () async {
               RouteData routeData = await _drawRoute( _generatedRoutePoints);
               if (routeData.allPoints.isNotEmpty) {
-                await drawTestRoute(_mapController, routeData.allPoints);
+                await drawTestRoute(_mapController, routeData.allPoints,_routeId);
               }
             },
             mini: true,
